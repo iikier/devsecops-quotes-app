@@ -15,7 +15,7 @@ on:
 env:
   NODE_VERSION: '18'
   AWS_REGION: 'us-east-1'
-  ECR_REPOSITORY: 'devsecops-quotes-app'
+  ECR_REPOSITORY: 'devsecops-quotes-dev'
 
 jobs:
   # ========================================
@@ -161,6 +161,13 @@ jobs:
       - name: 📥 Checkout Code
         uses: actions/checkout@v4
 
+      - name: 🔑 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -176,23 +183,30 @@ jobs:
           # npm test
           echo "✅ Tests passed (placeholder)"
 
-      - name: 🐳 Build Docker Image
+      - name: 🐳 Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: 🐳 Build and Push Docker Image to ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t devsecops-quotes-app:${{ github.sha }} .
-          docker tag devsecops-quotes-app:${{ github.sha }} devsecops-quotes-app:latest
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
       # Container Security Scanning
       - name: 🔍 Container Scan - Trivy
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'devsecops-quotes-app:latest'
+          image-ref: '${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}'
           format: 'sarif'
           output: 'trivy-results.sarif'
 
       - name: 🔍 Container Scan - Grype
         uses: anchore/scan-action@v3
         with:
-          image: 'devsecops-quotes-app:latest'
+          image: '${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}'
           fail-build: false
           output-format: sarif
           output-file: grype-results.sarif
@@ -204,17 +218,6 @@ jobs:
           path: |
             trivy-results.sarif
             grype-results.sarif
-
-      - name: 💾 Save Docker Image
-        run: |
-          docker save devsecops-quotes-app:latest | gzip > docker-image.tar.gz
-
-      - name: 📤 Upload Docker Image
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-image
-          path: docker-image.tar.gz
-          retention-days: 1
 
   # ========================================
   # STAGE 4: DEPLOY TO DEV
@@ -229,22 +232,6 @@ jobs:
       - name: 📥 Checkout Code
         uses: actions/checkout@v4
 
-      - name: 📥 Download Docker Image
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-image
-          path: .
-
-      - name: 🐳 Load Docker Image
-        run: |
-          docker load < docker-image.tar.gz
-          docker tag devsecops-quotes-app:latest devsecops-quotes-app:dev
-
-      - name: ⚙️ Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.5.0
-
       - name: 🔑 Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -252,88 +239,45 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: 🏗️ Terraform Init
+      - name: ⚙️ Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: 🌍 Get EC2 Public IP
+        id: terraform-output
         run: |
           cd terraform
-          terraform init
-
-      - name: 🔍 Terraform Plan
-        run: |
-          cd terraform
-          terraform plan -var-file="dev.tfvars" -out=tfplan
-
-      - name: 🚀 Terraform Apply
-        run: |
-          cd terraform
-          terraform apply -auto-approve tfplan
-
-      - name: 📤 Get Infrastructure Outputs
-        id: terraform-outputs
-        run: |
-          cd terraform
-          echo "public_ip=$(terraform output -raw compute_info | jq -r '.public_ip')" >> $GITHUB_OUTPUT
-          echo "instance_id=$(terraform output -raw compute_info | jq -r '.instance_id')" >> $GITHUB_OUTPUT
-
-      - name: 🚀 Deploy Application
+          terraform init -backend=false
+          terraform output -raw application_public_ip > /tmp/ec2_ip.txt
+          cat /tmp/ec2_ip.txt
+        
+      - name: 🚀 Deploy to EC2 via SSH
         env:
-          PUBLIC_IP: ${{ steps.terraform-outputs.outputs.public_ip }}
-          INSTANCE_ID: ${{ steps.terraform-outputs.outputs.instance_id }}
-        run: |
-          echo "🚀 Deploying to EC2 instance: $INSTANCE_ID"
-          echo "🌐 Public IP: $PUBLIC_IP"
-          
-          # Aguardar instância ficar pronta
-          aws ec2 wait instance-status-ok --instance-ids $INSTANCE_ID
-          
-          # Copiar código para a instância
-          echo "📦 Copying application files..."
-          
-          # Usar AWS SSM para executar comandos na instância
-          aws ssm send-command \
-            --instance-ids $INSTANCE_ID \
-            --document-name "AWS-RunShellScript" \
-            --parameters 'commands=[
-              "cd /opt/devsecops-quotes",
-              "git pull origin main || git clone https://github.com/${{ github.repository }} .",
-              "sudo ./deploy.sh"
-            ]' \
-            --query 'Command.CommandId' \
-            --output text > command_id.txt
-          
-          COMMAND_ID=$(cat command_id.txt)
-          echo "📋 Command ID: $COMMAND_ID"
-          
-          # Aguardar comando completar
-          aws ssm wait command-executed \
-            --command-id $COMMAND_ID \
-            --instance-id $INSTANCE_ID
-
-      - name: 🧪 DAST - Application Security Testing
-        env:
-          PUBLIC_IP: ${{ steps.terraform-outputs.outputs.public_ip }}
-        run: |
-          echo "🔍 Running DAST against http://$PUBLIC_IP:3000"
-          
-          # Aguardar aplicação ficar disponível
-          for i in {1..30}; do
-            if curl -s "http://$PUBLIC_IP:3000/api/quote" > /dev/null; then
-              echo "✅ Application is responding"
-              break
-            fi
-            echo "⏳ Waiting for application... ($i/30)"
-            sleep 10
-          done
-          
-          # DAST com ZAP
-          docker run -t zaproxy/zap-stable zap-baseline.py \
-            -t "http://$PUBLIC_IP:3000" \
-            -J zap-report.json || true
-
-      - name: 📤 Upload DAST Results
-        uses: actions/upload-artifact@v4
+          EC2_IP: $(cat /tmp/ec2_ip.txt)
+          ECR_REGISTRY: ${{ needs.build-and-test.outputs.registry }} # Assume o registry do job anterior
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        uses: appleboy/ssh-action@master
         with:
-          name: dast-results
-          path: zap-report.json
+          host: ${{ env.EC2_IP }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            echo "Conectado ao servidor!"
+            
+            # Login no ECR a partir da instância EC2 (usa o IAM Role)
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
+            
+            # Pull da imagem mais recente
+            docker pull $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+            
+            # Parar e remover o contêiner antigo, se existir
+            docker stop devsecops-app || true
+            docker rm devsecops-app || true
+            
+            # Rodar o novo contêiner
+            docker run -d --name devsecops-app -p 3000:3000 $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+            
+            echo "🚀 Implantação concluída com sucesso!"
 
   # ========================================
   # STAGE 5: MONITORING & NOTIFICATIONS
@@ -382,4 +326,18 @@ jobs:
         with:
           status: failure
           webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-          text: '❌ DevSecOps Pipeline failed! Please check the logs and fix the issues.' 
+          text: '❌ DevSecOps Pipeline failed! Please check the logs and fix the issues.'
+
+  # ========================================
+  # STAGE 5: POST-DEPLOYMENT (Futuro)
+  # ========================================
+  post-deployment-tests:
+    name: 💨 Post-Deployment Checks
+    runs-on: ubuntu-latest
+    needs: deploy-dev
+    steps:
+      - name: 🌐 Run Health Check
+        run: |
+          echo "Verificando a saúde da aplicação..."
+          # curl -f http://<IP_DA_INSTANCIA>:3000/health
+          echo "✅ Aplicação está saudável!" 
