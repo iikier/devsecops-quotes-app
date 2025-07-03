@@ -7,7 +7,7 @@ yarn-error.log*
 # Terraform
 .terraform/
 *.tfstate
-*.tfstate.*.backup
+*.tfstate.*
 *.tfvars
 *.tfvars.json
 
