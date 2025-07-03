@@ -178,17 +178,17 @@ jobs:
             --instance-ids $INSTANCE_ID \
             --document-name "AWS-RunShellScript" \
             --parameters 'commands=[
-              "echo \"🔄 Starting deployment...\"",
+              "echo \"Starting deployment...\"",
               "sudo docker stop devsecops-app || true",
               "sudo docker rm devsecops-app || true",
-              "echo \"🔐 Logging into ECR...\"",
+              "echo \"Logging into ECR...\"",
               "aws ecr get-login-password --region us-east-1 | sudo docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}",
-              "echo \"📥 Pulling new image...\"",
+              "echo \"Pulling new image...\"",
               "sudo docker pull '$IMAGE_URI'",
-              "echo \"🚀 Starting new container...\"",
+              "echo \"Starting new container...\"",
               "sudo docker run -d --name devsecops-app -p 3000:3000 --restart unless-stopped '$IMAGE_URI'",
-              "echo \"✅ Deployment completed successfully!\"",
-              "echo \"🔍 Container status:\"",
+              "echo \"Deployment completed successfully!\"",
+              "echo \"Container status:\"",
               "sudo docker ps | grep devsecops-app"
             ]' \
             --comment "Deploy application from GitHub Actions" \
@@ -198,7 +198,7 @@ jobs:
         env:
           INSTANCE_ID: ${{ steps.get-instance.outputs.instance-id }}
         run: |
-          echo "⏳ Waiting for deployment to complete..."
+          echo "Waiting for deployment to complete..."
           sleep 30
           
           # Verificar se o container está rodando
@@ -207,7 +207,7 @@ jobs:
             --document-name "AWS-RunShellScript" \
             --parameters 'commands=[
               "curl -f http://localhost:3000 || exit 1",
-              "echo \"✅ Application is responding correctly!\""
+              "echo \"Application is responding correctly!\""
             ]' \
             --comment "Verify application health" \
             --timeout-seconds 60 
