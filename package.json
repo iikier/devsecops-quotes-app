@@ -1,0 +1,21 @@
+{
+  "name": "devsecops-quotes-app",
+  "version": "1.0.0",
+  "description": "Uma aplicação para demonstrar um pipeline DevSecOps completo.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "devsecops",
+    "nodejs",
+    "express",
+    "aws"
+  ],
+  "author": "Seu Nome",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+} 

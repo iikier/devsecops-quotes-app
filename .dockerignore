@@ -1,0 +1,17 @@
+# Ignorar as dependências locais, pois elas serão instaladas dentro do contêiner.
+node_modules
+
+# Arquivos de log do npm
+npm-debug.log
+
+# O próprio Dockerfile não precisa fazer parte da imagem.
+Dockerfile
+
+# O arquivo .dockerignore também não é necessário dentro da imagem.
+.dockerignore
+
+# Ignorar o diretório do git
+.git
+
+# Ignorar arquivos específicos do editor/IDE
+.vscode
