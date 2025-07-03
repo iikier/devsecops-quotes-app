@@ -201,16 +201,16 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: 🌍 Get EC2 Public IP
-        id: terraform-output
+        id: ec2-ip
         run: |
-          cd terraform
-          terraform init -backend=false
-          echo "ip=$(terraform output -raw application_public_ip)" >> $GITHUB_OUTPUT
+          INSTANCE_ID=$(aws ec2 describe-instances --filters "Name=tag:Name,Values=devsecops-quotes-dev-instance" "Name=instance-state-name,Values=running" --query "Reservations[0].Instances[0].InstanceId" --output text)
+          EC2_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
+          echo "ip=$EC2_IP" >> $GITHUB_OUTPUT
         
       - name: 🚀 Deploy to EC2 via SSH
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ steps.terraform-output.outputs.ip }}
+          host: ${{ steps.ec2-ip.outputs.ip }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
