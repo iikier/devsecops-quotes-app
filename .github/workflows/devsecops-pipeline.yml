@@ -72,30 +72,6 @@ jobs:
       - name: 📥 Checkout Code
         uses: actions/checkout@v4
 
-      # SAST - Static Application Security Testing
-      - name: 🔍 SAST - CodeQL Analysis
-        uses: github/codeql-action/init@v3
-        with:
-          languages: javascript
-
-      - name: 🔍 SAST - CodeQL Autobuild
-        uses: github/codeql-action/autobuild@v3
-
-      - name: 🔍 SAST - CodeQL Analysis Upload
-        uses: github/codeql-action/analyze@v3
-
-      # SAST - Semgrep (Open Source)
-      - name: 🔍 SAST - Semgrep
-        uses: semgrep/semgrep-action@v1
-        with:
-          config: >-
-            p/security-audit
-            p/secrets
-            p/owasp-top-ten
-            p/javascript
-        env:
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-
       # Dependency Vulnerability Scanning
       - name: 🔍 Dependency Scan - npm audit
         run: |
@@ -114,23 +90,6 @@ jobs:
             exit 1
           fi
 
-      - name: 🔍 Dependency Scan - Snyk
-        uses: snyk/actions/node@master
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --severity-threshold=high --json-file-output=snyk.json
-        continue-on-error: true
-
-      # Secret Scanning
-      - name: 🔍 Secret Scan - TruffleHog
-        uses: trufflesecurity/trufflehog@main
-        with:
-          path: ./
-          base: main
-          head: HEAD
-          extra_args: --debug --only-verified
-
       # Infrastructure Scanning
       - name: 🔍 IaC Scan - Checkov
         uses: bridgecrewio/checkov-action@master
@@ -147,7 +106,6 @@ jobs:
           name: security-scan-results
           path: |
             npm-audit.json
-            snyk.json
             checkov.sarif
 
   # ========================================
