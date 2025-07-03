@@ -27,16 +27,6 @@ if (-not (Test-Path $sshKeyPath)) {
     Get-Content "$sshKeyPath.pub"
 }
 
-Write-Host "Configurando Terraform..." -ForegroundColor Yellow
-if (Test-Path "terraform") {
-    if (Test-Path "terraform\terraform.tfvars.example") {
-        if (-not (Test-Path "terraform\terraform.tfvars")) {
-            Copy-Item "terraform\terraform.tfvars.example" "terraform\terraform.tfvars"
-            Write-Host "terraform.tfvars criado!" -ForegroundColor Green
-        }
-    }
-}
-
 Write-Host "Criando scripts..." -ForegroundColor Yellow
 
 $securityScript = @'
@@ -64,8 +54,6 @@ Write-Host ""
 Write-Host "SETUP CONCLUIDO!" -ForegroundColor Green
 Write-Host ""
 Write-Host "PROXIMOS PASSOS:" -ForegroundColor Cyan
-Write-Host "1. aws configure" -ForegroundColor White
-Write-Host "2. Editar terraform\terraform.tfvars" -ForegroundColor White
-Write-Host "3. cd terraform; terraform init" -ForegroundColor White
-Write-Host "4. .\scripts\local-deploy.ps1" -ForegroundColor White
+Write-Host "1. aws configure (Se for usar AWS)" -ForegroundColor White
+Write-Host "2. .\scripts\local-deploy.ps1 para iniciar a aplicação" -ForegroundColor White
 Write-Host "" 
