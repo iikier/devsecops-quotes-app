@@ -205,35 +205,29 @@ jobs:
         run: |
           cd terraform
           terraform init -backend=false
-          terraform output -raw application_public_ip > /tmp/ec2_ip.txt
-          cat /tmp/ec2_ip.txt
+          echo "ip=$(terraform output -raw application_public_ip)" >> $GITHUB_OUTPUT
         
       - name: 🚀 Deploy to EC2 via SSH
-        env:
-          EC2_IP: $(cat /tmp/ec2_ip.txt)
-          ECR_REGISTRY: ${{ needs.build-and-test.outputs.registry }} # Assume o registry do job anterior
-          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
-          IMAGE_TAG: ${{ github.sha }}
         uses: appleboy/ssh-action@master
         with:
-          host: ${{ env.EC2_IP }}
+          host: ${{ steps.terraform-output.outputs.ip }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             echo "Conectado ao servidor!"
             
             # Login no ECR a partir da instância EC2 (usa o IAM Role)
-            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
             
             # Pull da imagem mais recente
-            docker pull $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+            docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
             
             # Parar e remover o contêiner antigo, se existir
             docker stop devsecops-app || true
             docker rm devsecops-app || true
             
             # Rodar o novo contêiner
-            docker run -d --name devsecops-app -p 3000:3000 $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+            docker run -d --name devsecops-app -p 3000:3000 ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
             
             echo "🚀 Implantação concluída com sucesso!"
 
